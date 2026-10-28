@@ -22,7 +22,7 @@ export default function ActivarVista_Publica({onSuccess,onCancel}:ActivarVistaPr
         boder: 4,
         color_fill: "black", 
         color_back: "white",
-        texto:`http://192.168.1.42:5173/vista-publica?verGrafico=${config.verGrafico}`,
+        texto:`http://192.168.1.42:5173/vista-publica?verGrafico=${config.verGrafico}`, //cambiar la ip de red por la suya.
         ver_grafico: config.verGrafico
     }
 
