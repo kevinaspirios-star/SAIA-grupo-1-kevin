@@ -198,10 +198,13 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
+# Database files
 local_settings.py
 db.sqlite3
+db.sqlite3*
 db.sqlite3-journal
+*.db
+*.db-journal
 
 # Flask stuff:
 instance/
@@ -322,5 +325,10 @@ node_modules
 psd
 thumb
 sketch
+
+seed_db.py
+
+# Archivos que se suben desde la app (certificados de calibracion)
+backend/uploads/
 
 # End of https://www.toptal.com/developers/gitignore/api/react,node,python

@@ -7,8 +7,8 @@ const EQUIPO_INICIAL :Equipo={
         nombre: "",
         categoria: "",
         ubicacion: "",
-        plan_de_Limpieza: "",
-        plan_de_calibracion: ""
+        plan_de_calibracion: "",
+        estado:"activo"
     };
 
 
@@ -34,7 +34,55 @@ async function handleGuardar(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    function soloLetrasyNumeros(nombre:string): boolean{
+
+        const patron=/^[a-zA-ZÁÉÍÓÚáéíóúÑñ0-9\s]+$/;
+        return patron.test(nombre);
+
+    }
+
+
+
+    if (!equipo.nombre.trim()) {
+      setErrorMsg("El nombre del equipo no puede estar vacío.");
+      return;
+    }
+
+    if (equipo.nombre.trim().length < 4) {
+    setErrorMsg("El nombre debe tener al menos 4 caracteres.");
+    return;
+    }
+
+    if (!equipo.ubicacion.trim()) {
+      setErrorMsg("La ubicacion del equipo no puede estar vacío.");
+      return;
+    }
+    if (equipo.ubicacion.trim().length < 4) {
+     setErrorMsg("La ubicacion debe tener al menos 4 caracteres.");
+     return;
+    }
+
+    if(!soloLetrasyNumeros(equipo.nombre)){
+      setErrorMsg("No se permiten numeros en el nombre.");
+      return;
+    }
+
+    if(!soloLetrasyNumeros(equipo.ubicacion)){
+      setErrorMsg("No se permiten numeros en la ubicacion.");
+      return;
+    }
+
+    const payload={
+        nombre: equipo.nombre.trim(),
+        categoria: equipo.categoria,
+        ubicacion: equipo.ubicacion.trim(),
+        plan_de_calibracion: equipo.plan_de_calibracion.trim(),
+        estado:"activo"
+    }
+
     setLoading(true);
+
 
     try {
         const res= await fetch(`${API_URL}/equipos/`, {
@@ -42,22 +90,28 @@ async function handleGuardar(e: React.SubmitEvent<HTMLFormElement>) {
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify(equipo),
+            body: JSON.stringify(payload),
         });
 
 
         if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            /*console.log(errorData);
-           /* console.log(errorData.detail[0].msg);   
-            console.log(errorData.detail[1].msg);  */ 
-            setErrorMsg(errorData.detail|| "Error al guardar el equipo");
-        }else{
-            dialog.current?.showModal();
-            setSuccessMsg("Equipo dado de alta exitosamente");
-            setEquipo(EQUIPO_INICIAL);
-
+        const errorData = await res.json().catch(() => ({}));
+        let mensaje = "Error al guardar el equipo.";
+        if (typeof errorData.detail === "string") {
+          mensaje = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          mensaje = errorData.detail
+            .map((err: { msg?: string }) => err.msg || JSON.stringify(err))
+            .join(", ");
         }
+        throw new Error(mensaje);
+      }
+
+    dialog.current?.showModal();
+    setSuccessMsg("Equipo dado de alta exitosamente");
+    setEquipo(EQUIPO_INICIAL);
+
+
 
     }catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : "Error de conexión con el servidor.");
@@ -128,17 +182,6 @@ return(
                 />
             </div>
 
-            <div className="form-group">
-                <label htmlFor="plan_de_Limpieza">Plan de Limpieza</label>
-                <input
-                    id="plan_de_Limpieza"
-                    name="plan_de_Limpieza"
-                    type="text"
-                    value={equipo.plan_de_Limpieza}
-                    onChange={handleChange}
-                    required    
-                />
-            </div>
 
             <div className="form-group">
                 <label htmlFor="plan_de_calibracion">Plan de Calibración</label>
@@ -151,7 +194,8 @@ return(
                     required    
                 />
             </div>
-
+            
+            
             <div className="form-acciones">
                 <button type="submit" className="btn-guardar" disabled={loading}>
                     {loading ? "guardando...":"Guardar"}

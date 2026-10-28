@@ -1,16 +1,32 @@
 import pytest
 from typing import Generator
+from datetime import datetime, timedelta
 from sqlalchemy import StaticPool, create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
+from types import SimpleNamespace
 from src.main import app
+from src.autenticacion.dependencies import get_usuario_actual
 from src.database import get_db
 from src.config import settings
 from src.models import ModeloBase
-from src.personas.services import crear_persona
-from src.mascotas.services import crear_mascota
-from src.personas.schemas import PersonaCreate
-from src.mascotas.schemas import MascotaCreate
-from src.mascotas.models import TipoMascota
+from src.personal.services import crear_personal
+from src.personal.schemas import PersonalCreate, Capacidades
+from src.insumos.services import crear_insumo
+from src.insumos.schemas import InsumoCreate
+from src.insumos.models import UnidadMedida
+from src.insumos_quimicos.services import InsumoQuimicoService
+from src.insumos_quimicos.schemas import InsumoQuimicoCreate
+from src.insumos_quimicos.constants import TipoQuimicoEnum, UnidadMedidaEnum as UnidadQuimico
+from src.equipos.services import crear_equipo
+from src.equipos.schemas import EquipoCreate
+from src.equipos.models import Categoria, Estado
+from src.sectores.services import crear_sector
+from src.sectores.schemas import SectorCreate
+from src.plan_De_limpieza.services import crear_plan
+from src.plan_De_limpieza.schemas import PlanDeLimpiezaCreate
+from src.tareas.services import crear_tarea
+from src.tareas.schemas import TareaCreate
+from src.tareas.models import Frecuencia
 
 
 # creamos una db para testing
@@ -28,13 +44,20 @@ def override_get_db():
     # Para usar restricciones de FK en SQLite, debemos habilitar la siguiente opción:
     db.execute(text("PRAGMA foreign_keys = ON"))
     try:
-        print("Using test DB!")
         yield db
     finally:
         db.close()
 
+
 # forzamos a fastapi para que utilice la db para testing.
 app.dependency_overrides[get_db] = override_get_db
+
+# Por defecto, los tests corren como un usuario con capacidad AMBAS (legajo 1, Juan Perez),
+# asi no tienen que loguearse. Los tests de autenticacion/permisos usan la fixture
+# `autenticacion_real` (tests/autenticacion) que saca este override y usa tokens de verdad.
+USUARIO_DE_PRUEBA = SimpleNamespace(legajo=1, capacidad=Capacidades.AMBAS, activo=True)
+app.dependency_overrides[get_usuario_actual] = lambda: USUARIO_DE_PRUEBA
+
 
 @pytest.fixture
 def session() -> Generator[Session, None, None]:
@@ -47,23 +70,162 @@ def session() -> Generator[Session, None, None]:
 
     # aqui podemos crear instancias de objetos para hacer tests
     # haciendo uso de las funciones "create_<clase>" de services y los schemas <Clase>Create.
-    persona_1 = crear_persona(db, PersonaCreate(nombre="Juan", email="juan.perez@gmail.com"))
-    persona_2 = crear_persona(
-        db, PersonaCreate(nombre="Ana", email="ana.dominguez@gmail.com")
+    persona_1 = crear_personal(
+        db,
+        PersonalCreate(
+            documento="30111222",
+            nombre="Juan",
+            apellido="Perez",
+            email="juan.perez@gmail.com",
+            contrasenia="Clave1234",
+        ),
     )
-    mascota_1 = crear_mascota(db, MascotaCreate(nombre="Lola", tipo=TipoMascota.GATO, tutor_id=persona_1.id))
-    mascota_2 = crear_mascota(db, MascotaCreate(nombre="Felipe", tipo=TipoMascota.PERRO, tutor_id=persona_1.id))
-    mascota_3 = crear_mascota(db, MascotaCreate(nombre="Coco", tipo=TipoMascota.COBAYO, tutor_id=persona_2.id))
+    persona_2 = crear_personal(
+        db,
+        PersonalCreate(
+            documento="30333444",
+            nombre="Ana",
+            apellido="Dominguez",
+            email="ana.dominguez@gmail.com",
+            contrasenia="Clave1234",
+        ),
+    )
 
-    db.add_all(
-        [
-            persona_1,
-            persona_2,
-            mascota_1,
-            mascota_2,
-            mascota_3
-        ]
+    hoy = datetime.now()
+    vencimiento_valido = (hoy + timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+    recepcion_valida = (hoy - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    insumo_1 = crear_insumo(
+        db,
+        InsumoCreate(
+            nombre="Harina de Trigo 000",
+            lote="ING-HAR-001",
+            fechaRecepcion=recepcion_valida,
+            fechaVencimiento=vencimiento_valido,
+            cantRecibida=100.0,
+            stock=80.0,
+            medida=UnidadMedida.KILOGRAMOS,
+        ),
     )
+    insumo_2 = crear_insumo(
+        db,
+        InsumoCreate(
+            nombre="Aceite de Girasol",
+            lote="ING-ACE-002",
+            fechaRecepcion=recepcion_valida,
+            fechaVencimiento=vencimiento_valido,
+            cantRecibida=50.0,
+            stock=35.0,
+            medida=UnidadMedida.LITROS,
+        ),
+    )
+    insumo_3 = crear_insumo(
+        db,
+        InsumoCreate(
+            nombre="Levadura Fresca",
+            lote="ING-LEV-003",
+            fechaRecepcion=recepcion_valida,
+            fechaVencimiento=vencimiento_valido,
+            cantRecibida=2000.0,
+            stock=1500.0,
+            medida=UnidadMedida.GRAMOS,
+        ),
+    )
+
+    InsumoQuimicoService.create(
+        db,
+        InsumoQuimicoCreate(
+            nombre="Lavandina",
+            tipo=TipoQuimicoEnum.DESINFECTANTE,
+            unidad_medida=UnidadQuimico.LITROS,
+            stock_actual=80.0,
+        ),
+    )
+    InsumoQuimicoService.create(
+        db,
+        InsumoQuimicoCreate(
+            nombre="Detergente desengrasante",
+            tipo=TipoQuimicoEnum.DESENGRASANTE,
+            unidad_medida=UnidadQuimico.LITROS,
+            stock_actual=35.0,
+        ),
+    )
+    InsumoQuimicoService.create(
+        db,
+        InsumoQuimicoCreate(
+            nombre="Alcohol 70%",
+            tipo=TipoQuimicoEnum.DESINFECTANTE,
+            unidad_medida=UnidadQuimico.LITROS,
+            stock_actual=50.0,
+        ),
+    )
+    InsumoQuimicoService.create(
+        db,
+        InsumoQuimicoCreate(
+            nombre="Bobina papel",
+            tipo=TipoQuimicoEnum.SANITIZANTE,
+            unidad_medida=UnidadQuimico.UNIDADES,
+            stock_actual=100.0,
+        ),
+    )
+
+    sector_1 = crear_sector(db, SectorCreate(nombre="Cocina"))
+    sector_2 = crear_sector(db, SectorCreate(nombre="Deposito"))
+
+    equipo_1 = crear_equipo(
+        db,
+        EquipoCreate(
+            nombre="Heladera",
+            categoria=Categoria.CONSERVAMIENTO,
+            sector_id=sector_1.id,
+            estado=Estado.ACTIVO,
+            plan_de_calibracion="Semestral",
+        ),
+    )
+
+    equipo_2 = crear_equipo(
+        db,
+        EquipoCreate(
+            nombre="Freezer",
+            categoria=Categoria.CONSERVAMIENTO,
+            sector_id=sector_2.id,
+            estado=Estado.ACTIVO,
+            plan_de_calibracion="Semestral",
+        ),
+    )
+
+    plan_semilla = crear_plan(
+        db,
+        PlanDeLimpiezaCreate(
+            nombre="PlanFreezer",
+            fecha_inicio=hoy.date() - timedelta(days=14),
+            equipo_id=equipo_2.id,
+        ),
+    )
+
+    tarea_1 = crear_tarea(
+        db,
+        TareaCreate(
+            nombre="Desinfeccion",
+            descripcion="Desinfectar estantes con alcohol al 70",
+            frecuencia=Frecuencia.DIARIA,
+            plan_id=plan_semilla.id,
+            personal_id=persona_1.legajo,
+        ),
+    )
+
+    tarea_2 = crear_tarea(
+        db,
+        TareaCreate(
+            nombre="Descongelar",
+            descripcion="Descongelar y lavar burletes",
+            frecuencia=Frecuencia.SEMANAL,
+            plan_id=plan_semilla.id,
+            personal_id=persona_1.legajo,
+        ),
+    )
+
+    db.add_all([persona_1, persona_2, insumo_1, insumo_2, insumo_3, equipo_1, equipo_2, plan_semilla, tarea_1, tarea_2])
     db.commit()
 
     yield db

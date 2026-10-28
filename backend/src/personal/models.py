@@ -1,0 +1,26 @@
+from typing import Optional, List
+from pydantic import EmailStr
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Enum as SQLEnum, Boolean
+from src.models import ModeloBase
+from src.personal.schemas import Capacidades
+from src.certificado.models import Certificado
+
+
+class Personal(ModeloBase):
+    __tablename__ = "personal"
+
+    legajo: Mapped[int] = mapped_column(primary_key=True, index=True)
+    documento: Mapped[int] = mapped_column(unique=True,index=True)
+    nombre: Mapped[str] = mapped_column(String(20),index=True)
+    apellido: Mapped[str] = mapped_column(String(20), index=True)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    capacidad : Mapped[Capacidades] = mapped_column(SQLEnum(Capacidades), default=Capacidades.OPERAR, nullable=False)
+    activo : Mapped[bool] = mapped_column(Boolean, default=True)
+    usuario: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    contrasenia_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tareas:Mapped[List["src.tareas.models.Tarea"]] = relationship("src.tareas.models.Tarea", back_populates="personal")
+
+
+
+    certificados: Mapped[list["Certificado"]] = relationship(back_populates="persona", cascade="all, delete-orphan") #Si se borra la persona se borran sus certificados

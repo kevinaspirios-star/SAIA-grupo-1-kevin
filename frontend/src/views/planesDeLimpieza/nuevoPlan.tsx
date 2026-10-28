@@ -1,0 +1,313 @@
+import { useEffect, useState } from "react";
+import type { PlanForm } from "./tipos";
+import type { EquipoConId } from '../equipos/tipos';
+import type { Sector } from '../sectores/tipos';
+import "../../styles/formularioAlta.css";
+import type { TareaConId } from "../tareas/tipos";
+import NuevaTarea from "../tareas/nuevaTarea";
+import { apiFetch } from '../../api/client';
+import { Dialog, DialogContent } from "../../components/ui/dialog";
+
+const PLAN_INICIAL: PlanForm = {
+  nombre: "",
+  tipo_objetivo: "equipo",
+  equipo_id: "",
+  sector_id: "",
+  fecha_inicio: "",
+  tareas: [],
+};
+
+const HOY = new Date().toISOString().split("T")[0];
+
+interface NuevoPlanDeLimpizaProps {
+  onSuccess?: () => void;
+  onCancel?: () => void;
+}
+
+export default function NuevoPlanDeLimpieza({ onSuccess, onCancel }: NuevoPlanDeLimpizaProps) {
+  const [planLimpieza, setPlanLimp] = useState<PlanForm>(PLAN_INICIAL);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [equipos, setEquipos] = useState<EquipoConId[]>([]);
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [tareas, setTareas] = useState<TareaConId[]>([]);
+  const [modalAbierto, setModalAbierto] = useState(false);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
+    setPlanLimp({ ...planLimpieza, [e.target.name]: e.target.value });
+  }
+
+  async function handleGuardar(e: React.SubmitEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    function soloLetrasYNumeros(nombre: string): boolean {
+      const patron = /^[a-zA-ZÁÉÍÓÚáéíóúÑñ0-9\s]+$/;
+      return patron.test(nombre);
+    }
+
+    if (!planLimpieza.nombre.trim()) {
+      setErrorMsg("El nombre del plan no puede estar vacío.");
+      return;
+    }
+
+    if (planLimpieza.nombre.trim().length < 4) {
+      setErrorMsg("El nombre debe tener al menos 4 caracteres.");
+      return;
+    }
+
+    if (!soloLetrasYNumeros(planLimpieza.nombre)) {
+      setErrorMsg("No se permiten caracteres especiales en el nombre.");
+      return;
+    }
+
+    if (planLimpieza.fecha_inicio > HOY) {
+      setErrorMsg("La fecha no puede ser mayor a la fecha actual");
+      return;
+    }
+
+    if (planLimpieza.tipo_objetivo === "equipo" && !planLimpieza.equipo_id) {
+      setErrorMsg("Debe seleccionar un equipo.");
+      return;
+    }
+
+    if (planLimpieza.tipo_objetivo === "sector" && !planLimpieza.sector_id) {
+      setErrorMsg("Debe seleccionar un sector.");
+      return;
+    }
+
+    const payload = {
+      nombre: planLimpieza.nombre.trim(),
+      fecha_inicio: planLimpieza.fecha_inicio,
+      tareas: tareas,
+      ...(planLimpieza.tipo_objetivo === "equipo"
+        ? { equipo_id: Number(planLimpieza.equipo_id) }
+        : { sector_id: Number(planLimpieza.sector_id) }),
+    };
+
+    setLoading(true);
+
+    try {
+      const res = await apiFetch(`/plan_De_limpieza/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        let mensaje = "Error al guardar el plan.";
+        if (typeof errorData.detail === "string") {
+          mensaje = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          mensaje = errorData.detail
+            .map((err: { msg?: string }) => err.msg || JSON.stringify(err))
+            .join(", ");
+        }
+        throw new Error(mensaje);
+      }
+
+      setSuccessMsg("Plan de Limpieza dado de alta exitosamente");
+      setPlanLimp(PLAN_INICIAL);
+      setTareas([]);
+      onSuccess?.();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Error de conexión con el servidor.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelado = false;
+    const fetchData = async () => {
+      try {
+        const [resEq, resSec] = await Promise.all([
+          apiFetch(`/equipos/`),
+          apiFetch(`/sectores/`),
+        ]);
+        if (!cancelado) {
+          if (resEq.ok) setEquipos(await resEq.json());
+          if (resSec.ok) setSectores(await resSec.json());
+        }
+      } catch {
+        if (!cancelado) {
+          setEquipos([]);
+          setSectores([]);
+        }
+      }
+    };
+    fetchData();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  function handleCancelar() {
+    setPlanLimp(PLAN_INICIAL);
+    setTareas([]);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    onCancel?.();
+  }
+
+  return (
+    <div className="modulo-container" style={{ maxWidth: "860px" }}>
+      <div className="modulo-header">
+        <h1>Nuevo Plan de Limpieza</h1>
+        <div className="subtitulo">02 · Formulario</div>
+      </div>
+
+      {errorMsg && <div className="alerta-error">{errorMsg}</div>}
+      {successMsg && <div className="alerta-exito">{successMsg}</div>}
+
+      <form onSubmit={handleGuardar}>
+        <div className="form-group">
+          <label htmlFor="fecha_inicio">Fecha del Plan</label>
+          <input
+            id="fecha_inicio"
+            name="fecha_inicio"
+            type="date"
+            max={HOY}
+            value={planLimpieza.fecha_inicio}
+            onChange={handleChange}
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="nombre">Nombre</label>
+          <input
+            id="nombre"
+            name="nombre"
+            type="text"
+            placeholder="Introduce el nombre"
+            value={planLimpieza.nombre}
+            onChange={handleChange}
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="tipo_objetivo">Asignar Plan a</label>
+          <select
+            id="tipo_objetivo"
+            name="tipo_objetivo"
+            value={planLimpieza.tipo_objetivo}
+            onChange={handleChange}
+          >
+            <option value="equipo">Equipo</option>
+            <option value="sector">Sector</option>
+          </select>
+        </div>
+
+        {planLimpieza.tipo_objetivo === "equipo" ? (
+          <div className="form-group">
+            <label htmlFor="equipo_id">Equipo</label>
+            <select
+              id="equipo_id"
+              name="equipo_id"
+              value={planLimpieza.equipo_id}
+              onChange={handleChange}
+              required
+            >
+              <option value="" disabled>Seleccione un equipo</option>
+              {equipos.map((equipo) => (
+                <option key={equipo.id} value={equipo.id}>
+                  {equipo.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="form-group">
+            <label htmlFor="sector_id">Sector</label>
+            <select
+              id="sector_id"
+              name="sector_id"
+              value={planLimpieza.sector_id}
+              onChange={handleChange}
+              required
+            >
+              <option value="" disabled>Seleccione un sector</option>
+              {sectores.map((sector) => (
+                <option key={sector.id} value={sector.id}>
+                  {sector.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="listado-top-bar" style={{ marginTop: "1.75rem", marginBottom: "0.75rem" }}>
+          <div className="modulo-header">
+            <h2 style={{ margin: 0, fontSize: "1.25rem", color: "var(--color-texto)" }}>Tareas</h2>
+          </div>
+          <button type="button" className="btn-guardar" onClick={() => setModalAbierto(true)}>
+            + Agregar Tarea
+          </button>
+        </div>
+
+        <div className="tabla-wrapper">
+          <table className="tabla-custom">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Procedimiento</th>
+                <th>Frecuencia</th>
+                <th>Personal a Cargo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '2rem' }}>
+                    Cargando Tareas...
+                  </td>
+                </tr>
+              ) : tareas?.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '2rem' }}>
+                    No hay Tareas registradas.
+                  </td>
+                </tr>
+              ) : (
+                tareas?.map((t: TareaConId) => (
+                  <tr key={t.id}>
+                    <td style={{ fontWeight: 500 }}>{t.nombre}</td>
+                    <td>{t.descripcion}</td>
+                    <td>{t.frecuencia}</td>
+                    <td>{t.nombre_personal ?? 'Sin asignar'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="form-acciones">
+          <button type="submit" className="btn-guardar" disabled={loading}>
+            {loading ? "Guardando..." : "Guardar"}
+          </button>
+          <button type="button" className="btn-cancelar" onClick={handleCancelar}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+
+      <Dialog open={modalAbierto} onOpenChange={setModalAbierto}>
+        <DialogContent>
+          <NuevaTarea
+            onSuccess={() => setModalAbierto(false)}
+            onCancel={() => setModalAbierto(false)}
+            onAgregarLocal={(nuevaTarea) => { setTareas(prev => [...prev, nuevaTarea]); }}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

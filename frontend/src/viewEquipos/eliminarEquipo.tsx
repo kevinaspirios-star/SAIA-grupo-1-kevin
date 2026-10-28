@@ -15,6 +15,7 @@ export default function EliminarEquipo({equipoID,onCancel,onSucces}:EliminarEqui
     const[loading, setLoading]= useState(true);
 
     const dialog= useRef<HTMLDialogElement>(null);
+    const dialogSeguro=useRef<HTMLDialogElement>(null);
 
 const handleEliminar = async (id?: number) => {
         if (!id) return;
@@ -65,11 +66,9 @@ const handleEliminar = async (id?: number) => {
         </div>
 
             {loading ? (
-                        <tr>
-                            <td colSpan={1} style={{ textAlign: 'center', padding: '2rem' }}>
-                                Cargando equipo...
-                            </td>
-                        </tr>
+                        <div style={{ textAlign: 'center', padding: '2rem' }}>
+                               Cargando equipo...
+                        </div>
         ) : equipo ? (
         <form >
             <div className="form-group">
@@ -110,7 +109,7 @@ const handleEliminar = async (id?: number) => {
                     id="plan_de_Limpieza"
                     name="plan_de_Limpieza"
                     type="text"
-                    value={equipo.plan_de_Limpieza}
+                    value={equipo.plan_de_Limpieza?.nombre}
                     disabled
                 />
             </div>
@@ -134,7 +133,7 @@ const handleEliminar = async (id?: number) => {
                 
                 )}
 
-                <div className="form-acciones"> <button className="btn-eliminar" title="Eliminar" onClick={() => handleEliminar(equipoID ?? undefined)}>
+                <div className="form-acciones"> <button className="btn-eliminar" title="Eliminar" onClick={() => dialogSeguro.current?.showModal()}>
                                         Eliminar
                         </button>
                         
@@ -143,9 +142,17 @@ const handleEliminar = async (id?: number) => {
                 </button>
                 </div>
 
+                <dialog ref={dialogSeguro} className="seguro">
+                    <h2>Esta seguro de eliminar este equipo?</h2>
+
+                    <button type="button" className="btn-eliminar" onClick={() => {handleEliminar(equipoID ?? undefined); dialogSeguro.current?.close()}}>Eliminar</button>
+
+                    <button type="button" className="btn-cancelar" onClick={() => {dialogSeguro.current?.close(); onCancel}}>Cancelar</button>
+                </dialog>
+
                 <dialog ref={dialog} className="eliminado-exito">
                     <h2>Eliminacion Exitosa</h2>
-                    <button type="button" className="btn-eliminar" onClick={()=> { dialog.current?.close(); onSucces?.()}}>Aceptar</button>
+                    <button type="button" className="btn-exito" onClick={()=> { dialog.current?.close(); onSucces?.()}}>Aceptar</button>
                 </dialog>
 
         

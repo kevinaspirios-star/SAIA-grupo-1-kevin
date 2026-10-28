@@ -1,62 +1,113 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import List, Literal
-from src.equipos.exceptions import CadenaMayorOigualACUATRO, NombreConNumeros, UbicacionConNumeros
-from src.equipos.models import Categoria
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import List, Literal, Optional, Union
+from src.plan_de_calibracion.schemas import PlanDeCalibracion
+from src.plan_De_limpieza.schemas import PlanDeLimpieza
+from src.equipos.models import Categoria, Estado
+from src.equipos import exceptions
+from src.sectores.schemas import Sector as SectorSchema
 
 class EquipoBase(BaseModel):
-    nombre: str = Field( max_length=20)
-    ubicacion: str = Field( max_length=50)
+    nombre: str = Field(max_length=50)
     categoria: Categoria
-    plan_de_Limpieza: str = Field(min_length=1, max_length =100)
-    plan_de_calibracion: str = Field(min_length=1, max_length=100)
+    estado: Estado
 
+    @field_validator("categoria", mode="before")
+    @classmethod
+    def is_valid_categoria(cls, v: str) -> str:
+        if isinstance(v, Categoria):
+            return v
+        if isinstance(v, str):
+            val_upper = v.upper()
+            if val_upper in Categoria.__members__:
+                return Categoria[val_upper]
+        raise exceptions.CATEGORIAInvalida(list(Categoria))
 
 class EquipoCreate(EquipoBase):
-    nombre: str = Field( max_length=20)
-    ubicacion: str = Field(max_length=50)
+    nombre: str = Field(max_length=50)
+    sector_id: Optional[int] = None
+    ubicacion_id: Optional[int] = None
+    ubicacion: Optional[Union[int, str]] = None
+    plan_de_calibracion: Optional[str] = None
+    estado: Estado = Estado.ACTIVO
 
-    @field_validator('nombre')
-    def validar_nombre(cls, v):
-        if not v.isalpha():
-            raise NombreConNumeros()
-        return v
-    
-    @field_validator('ubicacion')
-    def validar_ubicacion(cls, v):
-            if not v.isalpha():
-                raise UbicacionConNumeros()
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, v: str) -> str:
+        if all(c.isalnum() or c.isspace() for c in v):
             return v
-    @field_validator('ubicacion','nombre')
-    def validar_largoDNombre(cls,v):
+        raise exceptions.NombreConNumeros()
 
-         if len(v)<4:
-              raise CadenaMayorOigualACUATRO()
-         return v
-         
-
-class EquipoUpdate(EquipoBase):
-    nombre: str = Field( max_length=20)  
-    ubicacion: str = Field( max_length=50)
-
-    @field_validator('nombre')
-    def validar_nombre(cls, v):
-            if not v.isalpha():
-                raise NombreConNumeros()
+    @field_validator("nombre")
+    @classmethod
+    def validar_largoDNombre(cls, v: str) -> str:
+        if len(v) >= 4:
             return v
+        raise exceptions.CadenaMayorOigualACUATRO()
 
-    @field_validator('ubicacion')
-    def validar_ubicacion(cls, v):
-                if not v.isalpha():
-                    raise UbicacionConNumeros()
-                return v 
+    @model_validator(mode="after")
+    def resolver_sector(self):
+        if self.sector_id is None and self.ubicacion_id is not None:
+            self.sector_id = self.ubicacion_id
+        if self.sector_id is None and isinstance(self.ubicacion, int):
+            self.sector_id = self.ubicacion
+        if self.sector_id is None and isinstance(self.ubicacion, str) and self.ubicacion.isdigit():
+            self.sector_id = int(self.ubicacion)
+        return self
 
-    @field_validator('ubicacion','nombre')
-    def validar_largo(cls,v):
-    
-             if len(v)<4:
-                  raise CadenaMayorOigualACUATRO()
-             return v
+class EquipoUpdate(BaseModel):
+    nombre: Optional[str] = Field(None, max_length=50)
+    sector_id: Optional[int] = None
+    ubicacion_id: Optional[int] = None
+    ubicacion: Optional[Union[int, str]] = None
+    categoria: Optional[Categoria] = None
+    plan_de_calibracion: Optional[str] = Field(None, max_length=100)
+    estado: Optional[Estado] = None
+
+    @field_validator("categoria", mode="before")
+    @classmethod
+    def is_valid_categoria(cls, v: Optional[str]) -> Optional[Categoria]:
+        if v is None:
+            return None
+        if isinstance(v, Categoria):
+            return v
+        if isinstance(v, str):
+            val_upper = v.upper()
+            if val_upper in Categoria.__members__:
+                return Categoria[val_upper]
+        raise exceptions.CATEGORIAInvalida(list(Categoria))
+
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if all(c.isalnum() or c.isspace() for c in v):
+            return v
+        raise exceptions.NombreConNumeros()
+
+    @field_validator("nombre")
+    @classmethod
+    def validar_largoDNombre(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if len(v) >= 4:
+            return v
+        raise exceptions.CadenaMayorOigualACUATRO()
+
+    @model_validator(mode="after")
+    def resolver_sector(self):
+        if self.sector_id is None and self.ubicacion_id is not None:
+            self.sector_id = self.ubicacion_id
+        if self.sector_id is None and isinstance(self.ubicacion, int):
+            self.sector_id = self.ubicacion
+        if self.sector_id is None and isinstance(self.ubicacion, str) and self.ubicacion.isdigit():
+            self.sector_id = int(self.ubicacion)
+        return self
 
 class Equipo(EquipoBase):
-    id:int
+    id: int
+    sector_id: int
+    ubicacion: SectorSchema
+    plan_de_Limpieza: Optional[PlanDeLimpieza] = None
+    plan_de_calibracion: Optional[PlanDeCalibracion] = None
     model_config = ConfigDict(from_attributes=True)
